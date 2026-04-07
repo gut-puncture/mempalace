@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mempalace"
-version = "3.0.0"
+dynamic = ["version"]
 description = "Give your AI a memory — mine projects and conversations into a searchable palace. No API key required."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -40,6 +40,9 @@ Repository = "https://github.com/milla-jovovich/mempalace"
 
 [tool.setuptools.packages.find]
 include = ["mempalace*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "mempalace._version.__version__"}
 
 [project.scripts]
 mempalace = "mempalace:main"
