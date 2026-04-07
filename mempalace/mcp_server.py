@@ -23,6 +23,7 @@ import logging
 import hashlib
 from datetime import datetime
 
+from ._version import __version__
 from .config import MempalaceConfig
 from .searcher import search_memories
 from .palace_graph import traverse, find_tunnels, graph_stats
@@ -99,8 +100,8 @@ PALACE_PROTOCOL = """IMPORTANT — MemPalace Memory Protocol:
 
 This protocol ensures the AI KNOWS before it speaks. Storage is not memory — but storage + this protocol = memory."""
 
-AAAK_SPEC = """AAAK is a compressed memory dialect that MemPalace uses for efficient storage.
-It is designed to be readable by both humans and LLMs without decoding.
+AAAK_SPEC = """AAAK is an optional compressed memory dialect that MemPalace can expose to agents.
+The current palace stores verbatim drawers; AAAK guidance is not a lossless reconstruction guarantee.
 
 FORMAT:
   ENTITIES: 3-letter uppercase codes. ALC=Alice, JOR=Jordan, RIL=Riley, MAX=Max, BEN=Ben.
@@ -700,7 +701,7 @@ def handle_request(request):
             "result": {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "mempalace", "version": "2.0.0"},
+                "serverInfo": {"name": "mempalace", "version": __version__},
             },
         }
     elif method == "notifications/initialized":
