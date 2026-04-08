@@ -24,6 +24,7 @@ import hashlib
 from datetime import datetime
 
 from .config import MempalaceConfig
+from .drawer_store import MANUAL_INGEST_MODE, REFRESH_OWNER_KEY
 from .version import __version__
 from .searcher import search_memories
 from .palace_graph import traverse, find_tunnels, graph_stats
@@ -278,6 +279,8 @@ def tool_add_drawer(
                     "chunk_index": 0,
                     "added_by": added_by,
                     "filed_at": datetime.now().isoformat(),
+                    "ingest_mode": MANUAL_INGEST_MODE,
+                    REFRESH_OWNER_KEY: MANUAL_INGEST_MODE,
                 }
             ],
         )

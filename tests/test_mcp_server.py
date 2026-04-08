@@ -209,6 +209,11 @@ class TestWriteTools:
         assert result["room"] == "test_room"
         assert result["drawer_id"].startswith("drawer_test_wing_test_room_")
 
+        row = _get_collection(palace_path).get(ids=[result["drawer_id"]], include=["metadatas"])
+        metadata = row["metadatas"][0]
+        assert metadata["ingest_mode"] == "manual"
+        assert metadata["refresh_owner"] == "manual"
+
     def test_add_drawer_duplicate_detection(self, monkeypatch, config, palace_path, kg):
         _patch_mcp_server(monkeypatch, config, palace_path, kg)
         _get_collection(palace_path, create=True)
