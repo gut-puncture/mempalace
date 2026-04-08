@@ -25,6 +25,26 @@ def test_env_override():
     del os.environ["MEMPALACE_PALACE_PATH"]
 
 
+def test_config_file_palace_path_expands_home(monkeypatch):
+    home = tempfile.mkdtemp()
+    monkeypatch.setenv("HOME", home)
+    tmpdir = tempfile.mkdtemp()
+    with open(os.path.join(tmpdir, "config.json"), "w") as f:
+        json.dump({"palace_path": "~/custom/palace"}, f)
+
+    cfg = MempalaceConfig(config_dir=tmpdir)
+    assert cfg.palace_path == os.path.join(home, "custom", "palace")
+
+
+def test_env_override_expands_home(monkeypatch):
+    home = tempfile.mkdtemp()
+    monkeypatch.setenv("HOME", home)
+    monkeypatch.setenv("MEMPALACE_PALACE_PATH", "~/env/palace")
+
+    cfg = MempalaceConfig(config_dir=tempfile.mkdtemp())
+    assert cfg.palace_path == os.path.join(home, "env", "palace")
+
+
 def test_init():
     tmpdir = tempfile.mkdtemp()
     cfg = MempalaceConfig(config_dir=tmpdir)

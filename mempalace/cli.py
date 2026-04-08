@@ -99,7 +99,7 @@ def cmd_mine(args):
 def cmd_search(args):
     from .searcher import search, SearchError
 
-    palace_path = os.path.expanduser(args.palace) if args.palace else MempalaceConfig().palace_path
+    palace_path = os.path.expanduser(args.palace) if args.palace else None
     try:
         search(
             query=args.query,
@@ -116,7 +116,7 @@ def cmd_wakeup(args):
     """Show L0 (identity) + L1 (essential story) — the wake-up context."""
     from .layers import MemoryStack
 
-    palace_path = os.path.expanduser(args.palace) if args.palace else MempalaceConfig().palace_path
+    palace_path = os.path.expanduser(args.palace) if args.palace else None
     stack = MemoryStack(palace_path=palace_path)
 
     text = stack.wake_up(wing=args.wing)
@@ -151,7 +151,7 @@ def cmd_split(args):
 def cmd_status(args):
     from .miner import status
 
-    palace_path = os.path.expanduser(args.palace) if args.palace else MempalaceConfig().palace_path
+    palace_path = os.path.expanduser(args.palace) if args.palace else None
     status(palace_path=palace_path)
 
 

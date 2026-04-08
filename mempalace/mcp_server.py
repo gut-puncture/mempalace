@@ -24,11 +24,10 @@ import hashlib
 from datetime import datetime
 
 from .config import MempalaceConfig
-from .drawer_store import MANUAL_INGEST_MODE, REFRESH_OWNER_KEY
+from .drawer_store import DrawerStore, MANUAL_INGEST_MODE, REFRESH_OWNER_KEY
 from .version import __version__
 from .searcher import search_memories
 from .palace_graph import traverse, find_tunnels, graph_stats
-import chromadb
 
 from .knowledge_graph import KnowledgeGraph
 
@@ -43,12 +42,14 @@ _config = MempalaceConfig()
 def _get_collection(create=False):
     """Return the ChromaDB collection, or None on failure."""
     try:
-        client = chromadb.PersistentClient(path=_config.palace_path)
-        if create:
-            return client.get_or_create_collection(_config.collection_name)
-        return client.get_collection(_config.collection_name)
+        store = DrawerStore(config=_config)
+        return store.get_collection(create=create)
     except Exception:
         return None
+
+
+def _get_store():
+    return DrawerStore(config=_config)
 
 
 def _no_palace():
@@ -62,26 +63,25 @@ def _no_palace():
 
 
 def tool_status():
-    col = _get_collection()
-    if not col:
+    try:
+        store = _get_store()
+        count = store.count()
+    except Exception:
         return _no_palace()
-    count = col.count()
+
     wings = {}
     rooms = {}
-    try:
-        all_meta = col.get(include=["metadatas"], limit=10000)["metadatas"]
-        for m in all_meta:
-            w = m.get("wing", "unknown")
-            r = m.get("room", "unknown")
-            wings[w] = wings.get(w, 0) + 1
-            rooms[r] = rooms.get(r, 0) + 1
-    except Exception:
-        pass
+    for row in store.iter_rows():
+        m = row["metadata"]
+        w = m.get("wing", "unknown")
+        r = m.get("room", "unknown")
+        wings[w] = wings.get(w, 0) + 1
+        rooms[r] = rooms.get(r, 0) + 1
     return {
         "total_drawers": count,
         "wings": wings,
         "rooms": rooms,
-        "palace_path": _config.palace_path,
+        "palace_path": store.palace_path,
         "protocol": PALACE_PROTOCOL,
         "aaak_dialect": AAAK_SPEC,
     }
@@ -121,63 +121,55 @@ When WRITING AAAK: use entity codes, mark emotions, keep structure tight."""
 
 
 def tool_list_wings():
-    col = _get_collection()
-    if not col:
+    try:
+        store = _get_store()
+    except Exception:
         return _no_palace()
     wings = {}
-    try:
-        all_meta = col.get(include=["metadatas"], limit=10000)["metadatas"]
-        for m in all_meta:
-            w = m.get("wing", "unknown")
-            wings[w] = wings.get(w, 0) + 1
-    except Exception:
-        pass
+    for row in store.iter_rows():
+        m = row["metadata"]
+        w = m.get("wing", "unknown")
+        wings[w] = wings.get(w, 0) + 1
     return {"wings": wings}
 
 
 def tool_list_rooms(wing: str = None):
-    col = _get_collection()
-    if not col:
+    try:
+        store = _get_store()
+    except Exception:
         return _no_palace()
     rooms = {}
-    try:
-        kwargs = {"include": ["metadatas"], "limit": 10000}
-        if wing:
-            kwargs["where"] = {"wing": wing}
-        all_meta = col.get(**kwargs)["metadatas"]
-        for m in all_meta:
-            r = m.get("room", "unknown")
-            rooms[r] = rooms.get(r, 0) + 1
-    except Exception:
-        pass
+    where = {"wing": wing} if wing else None
+    for row in store.iter_rows(where=where):
+        m = row["metadata"]
+        r = m.get("room", "unknown")
+        rooms[r] = rooms.get(r, 0) + 1
     return {"wing": wing or "all", "rooms": rooms}
 
 
 def tool_get_taxonomy():
-    col = _get_collection()
-    if not col:
+    try:
+        store = _get_store()
+    except Exception:
         return _no_palace()
     taxonomy = {}
-    try:
-        all_meta = col.get(include=["metadatas"], limit=10000)["metadatas"]
-        for m in all_meta:
-            w = m.get("wing", "unknown")
-            r = m.get("room", "unknown")
-            if w not in taxonomy:
-                taxonomy[w] = {}
-            taxonomy[w][r] = taxonomy[w].get(r, 0) + 1
-    except Exception:
-        pass
+    for row in store.iter_rows():
+        m = row["metadata"]
+        w = m.get("wing", "unknown")
+        r = m.get("room", "unknown")
+        if w not in taxonomy:
+            taxonomy[w] = {}
+        taxonomy[w][r] = taxonomy[w].get(r, 0) + 1
     return {"taxonomy": taxonomy}
 
 
 def tool_search(query: str, limit: int = 5, wing: str = None, room: str = None):
     return search_memories(
         query,
-        palace_path=_config.palace_path,
         wing=wing,
         room=room,
         n_results=limit,
+        config=_config,
     )
 
 

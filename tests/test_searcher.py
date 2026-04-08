@@ -4,6 +4,13 @@ test_searcher.py — Tests for the programmatic search_memories API.
 Tests the library-facing search interface (not the CLI print variant).
 """
 
+import json
+import os
+import tempfile
+
+import chromadb
+
+from mempalace.config import MempalaceConfig
 from mempalace.searcher import search_memories
 
 
@@ -43,3 +50,36 @@ class TestSearchMemories:
         assert "source_file" in hit
         assert "similarity" in hit
         assert isinstance(hit["similarity"], float)
+
+    def test_search_uses_configured_collection_name_when_no_palace_override(self):
+        tmpdir = tempfile.mkdtemp()
+        palace_path = os.path.join(tmpdir, "palace")
+        cfg_dir = os.path.join(tmpdir, "config")
+        os.makedirs(cfg_dir)
+
+        with open(os.path.join(cfg_dir, "config.json"), "w") as f:
+            json.dump(
+                {
+                    "palace_path": palace_path,
+                    "collection_name": "custom_drawers",
+                },
+                f,
+            )
+
+        client = chromadb.PersistentClient(path=palace_path)
+        collection = client.get_or_create_collection("custom_drawers")
+        collection.add(
+            ids=["drawer_custom_backend_1"],
+            documents=["JWT authentication lives in the custom collection."],
+            metadatas=[
+                {
+                    "wing": "project",
+                    "room": "backend",
+                    "source_file": "auth.py",
+                }
+            ],
+        )
+
+        result = search_memories("JWT authentication", config=MempalaceConfig(config_dir=cfg_dir))
+        assert len(result["results"]) == 1
+        assert result["results"][0]["room"] == "backend"

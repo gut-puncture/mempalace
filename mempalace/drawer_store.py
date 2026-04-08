@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, Iterator, List, Optional
 
 import chromadb
 
@@ -126,13 +126,17 @@ class DrawerStore:
             return client.get_or_create_collection(self.collection_name)
         return client.get_collection(self.collection_name)
 
-    def get_rows(self, where: Optional[Dict] = None, include_documents: bool = False) -> List[Dict]:
+    def count(self) -> int:
+        return self.get_collection().count()
+
+    def iter_rows(
+        self, where: Optional[Dict] = None, include_documents: bool = False
+    ) -> Iterator[Dict]:
         collection = self.get_collection()
         include = ["metadatas"]
         if include_documents:
             include.append("documents")
 
-        rows = []
         offset = 0
 
         while True:
@@ -159,13 +163,14 @@ class DrawerStore:
                 }
                 if include_documents:
                     row["document"] = documents[index]
-                rows.append(row)
+                yield row
 
             if len(ids) < DRAWER_PAGE_SIZE:
                 break
             offset += len(ids)
 
-        return rows
+    def get_rows(self, where: Optional[Dict] = None, include_documents: bool = False) -> List[Dict]:
+        return list(self.iter_rows(where=where, include_documents=include_documents))
 
     def get_namespace_rows(self, namespace: DrawerNamespace) -> List[Dict]:
         rows = self.get_rows(where=namespace.where, include_documents=False)

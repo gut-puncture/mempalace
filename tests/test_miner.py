@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import chromadb
 import yaml
 
-from mempalace.miner import mine, scan_project
+from mempalace.miner import mine, scan_project, status
 
 
 def write_file(path: Path, content: str):
@@ -465,5 +465,33 @@ def test_manual_drawers_with_same_source_file_survive_project_refresh(monkeypatc
         assert any(doc == "Remember the migration checklist." for _, doc, _ in rows)
         assert any(meta.get("ingest_mode") == "manual" for _, _, meta in rows)
         assert any(meta.get("ingest_mode") == "projects" for _, _, meta in rows)
+    finally:
+        shutil.rmtree(tmpdir)
+
+
+def test_status_reports_exact_total_above_ten_thousand(capsys):
+    tmpdir = tempfile.mkdtemp()
+    try:
+        palace_path = Path(tmpdir) / "palace"
+        client = chromadb.PersistentClient(path=str(palace_path))
+        collection = client.get_or_create_collection("mempalace_drawers")
+
+        batch_size = 1000
+        total = 10005
+        for start in range(0, total, batch_size):
+            end = min(total, start + batch_size)
+            ids = [f"drawer_status_{index}" for index in range(start, end)]
+            documents = [f"status drawer {index}" for index in range(start, end)]
+            metadatas = [
+                {"wing": "bulk", "room": "archive", "source_file": f"bulk_{index}.md"}
+                for index in range(start, end)
+            ]
+            collection.add(ids=ids, documents=documents, metadatas=metadatas)
+
+        status(str(palace_path))
+        output = capsys.readouterr().out
+
+        assert "MemPalace Status — 10005 drawers" in output
+        assert "ROOM: archive" in output
     finally:
         shutil.rmtree(tmpdir)

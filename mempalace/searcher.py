@@ -9,7 +9,8 @@ Returns verbatim text — the actual words, never summaries.
 import logging
 from pathlib import Path
 
-import chromadb
+from .config import MempalaceConfig
+from .drawer_store import DrawerStore
 
 logger = logging.getLogger("mempalace_mcp")
 
@@ -18,18 +19,25 @@ class SearchError(Exception):
     """Raised when search cannot proceed (e.g. no palace found)."""
 
 
-def search(query: str, palace_path: str, wing: str = None, room: str = None, n_results: int = 5):
+def search(
+    query: str,
+    palace_path: str | None = None,
+    wing: str = None,
+    room: str = None,
+    n_results: int = 5,
+    config: MempalaceConfig | None = None,
+):
     """
     Search the palace. Returns verbatim drawer content.
     Optionally filter by wing (project) or room (aspect).
     """
+    store = DrawerStore(palace_path=palace_path, config=config)
     try:
-        client = chromadb.PersistentClient(path=palace_path)
-        col = client.get_collection("mempalace_drawers")
+        col = store.get_collection()
     except Exception:
-        print(f"\n  No palace found at {palace_path}")
+        print(f"\n  No palace found at {store.palace_path}")
         print("  Run: mempalace init <dir> then mempalace mine <dir>")
-        raise SearchError(f"No palace found at {palace_path}")
+        raise SearchError(f"No palace found at {store.palace_path}")
 
     # Build where filter
     where = {}
@@ -91,17 +99,22 @@ def search(query: str, palace_path: str, wing: str = None, room: str = None, n_r
 
 
 def search_memories(
-    query: str, palace_path: str, wing: str = None, room: str = None, n_results: int = 5
+    query: str,
+    palace_path: str | None = None,
+    wing: str = None,
+    room: str = None,
+    n_results: int = 5,
+    config: MempalaceConfig | None = None,
 ) -> dict:
     """
     Programmatic search — returns a dict instead of printing.
     Used by the MCP server and other callers that need data.
     """
+    store = DrawerStore(palace_path=palace_path, config=config)
     try:
-        client = chromadb.PersistentClient(path=palace_path)
-        col = client.get_collection("mempalace_drawers")
+        col = store.get_collection()
     except Exception as e:
-        logger.error("No palace found at %s: %s", palace_path, e)
+        logger.error("No palace found at %s: %s", store.palace_path, e)
         return {
             "error": "No palace found",
             "hint": "Run: mempalace init <dir> && mempalace mine <dir>",

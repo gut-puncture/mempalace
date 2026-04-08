@@ -7,6 +7,12 @@ via monkeypatch to avoid touching real data.
 """
 
 import json
+import os
+import tempfile
+
+import chromadb
+
+from mempalace.config import MempalaceConfig
 
 
 def _patch_mcp_server(monkeypatch, config, palace_path, kg):
@@ -20,14 +26,12 @@ def _patch_mcp_server(monkeypatch, config, palace_path, kg):
     monkeypatch.setattr(mcp_server, "_kg", kg)
 
 
-def _get_collection(palace_path, create=False):
+def _get_collection(palace_path, create=False, collection_name="mempalace_drawers"):
     """Helper to get collection from test palace."""
-    import chromadb
-
     client = chromadb.PersistentClient(path=palace_path)
     if create:
-        return client.get_or_create_collection("mempalace_drawers")
-    return client.get_collection("mempalace_drawers")
+        return client.get_or_create_collection(collection_name)
+    return client.get_collection(collection_name)
 
 
 # ── Protocol Layer ──────────────────────────────────────────────────────
@@ -151,6 +155,50 @@ class TestReadTools:
         assert result["taxonomy"]["project"]["frontend"] == 1
         assert result["taxonomy"]["notes"]["planning"] == 1
 
+    def test_read_tools_use_configured_collection_name(self, monkeypatch, kg):
+        tmpdir = tempfile.mkdtemp()
+        palace_path = os.path.join(tmpdir, "palace")
+        cfg_dir = os.path.join(tmpdir, "config")
+        os.makedirs(cfg_dir)
+        with open(os.path.join(cfg_dir, "config.json"), "w") as f:
+            json.dump(
+                {
+                    "palace_path": palace_path,
+                    "collection_name": "custom_drawers",
+                },
+                f,
+            )
+
+        collection = _get_collection(palace_path, create=True, collection_name="custom_drawers")
+        collection.add(
+            ids=["drawer_custom_room_1", "drawer_custom_room_2"],
+            documents=[
+                "Custom collection result about billing and finance.",
+                "Custom collection result about sprint planning.",
+            ],
+            metadatas=[
+                {"wing": "project", "room": "finance", "source_file": "billing.md"},
+                {"wing": "notes", "room": "planning", "source_file": "plan.md"},
+            ],
+        )
+
+        config = MempalaceConfig(config_dir=cfg_dir)
+        _patch_mcp_server(monkeypatch, config, palace_path, kg)
+
+        from mempalace.mcp_server import (
+            tool_get_taxonomy,
+            tool_list_rooms,
+            tool_list_wings,
+            tool_search,
+            tool_status,
+        )
+
+        assert tool_status()["total_drawers"] == 2
+        assert tool_list_wings()["wings"] == {"project": 1, "notes": 1}
+        assert tool_list_rooms(wing="project")["rooms"] == {"finance": 1}
+        assert tool_get_taxonomy()["taxonomy"]["notes"]["planning"] == 1
+        assert tool_search("billing")["results"][0]["room"] == "finance"
+
     def test_no_palace_returns_error(self, monkeypatch, config, kg):
         config._file_config["palace_path"] = "/nonexistent/path"
         _patch_mcp_server(monkeypatch, config, "/nonexistent/path", kg)
@@ -158,6 +206,33 @@ class TestReadTools:
 
         result = tool_status()
         assert "error" in result
+
+    def test_status_and_taxonomy_are_exact_above_ten_thousand(self, monkeypatch, config, palace_path, kg):
+        collection = _get_collection(palace_path, create=True)
+        batch_size = 1000
+        total = 10005
+
+        for start in range(0, total, batch_size):
+            end = min(total, start + batch_size)
+            ids = [f"drawer_big_{index}" for index in range(start, end)]
+            documents = [f"large palace memory {index}" for index in range(start, end)]
+            metadatas = [
+                {"wing": "bulk", "room": "archive", "source_file": f"bulk_{index}.md"}
+                for index in range(start, end)
+            ]
+            collection.add(ids=ids, documents=documents, metadatas=metadatas)
+
+        _patch_mcp_server(monkeypatch, config, palace_path, kg)
+
+        from mempalace.mcp_server import tool_get_taxonomy, tool_list_rooms, tool_list_wings, tool_status
+
+        status = tool_status()
+        assert status["total_drawers"] == total
+        assert status["wings"]["bulk"] == total
+        assert status["rooms"]["archive"] == total
+        assert tool_list_wings()["wings"]["bulk"] == total
+        assert tool_list_rooms(wing="bulk")["rooms"]["archive"] == total
+        assert tool_get_taxonomy()["taxonomy"]["bulk"]["archive"] == total
 
 
 # ── Search Tool ─────────────────────────────────────────────────────────
