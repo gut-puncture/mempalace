@@ -16,6 +16,7 @@ from .config import DEFAULT_COLLECTION_NAME, MempalaceConfig
 
 DRAWER_PAGE_SIZE = 1000
 PROJECT_INGEST_MODE = "projects"
+CONVO_INGEST_MODE = "convos"
 MANUAL_INGEST_MODE = "manual"
 REFRESH_OWNER_KEY = "refresh_owner"
 
@@ -25,6 +26,22 @@ def _project_drawer_id(wing: str, room: str, source_file: str, chunk_index: int)
         (source_file + str(chunk_index)).encode(), usedforsecurity=False
     ).hexdigest()[:16]
     return f"drawer_{wing}_{room}_{digest}"
+
+
+def _legacy_convo_drawer_id(wing: str, room: str, source_file: str, chunk_index: int) -> str:
+    digest = hashlib.md5(
+        (source_file + str(chunk_index)).encode(), usedforsecurity=False
+    ).hexdigest()[:16]
+    return f"drawer_{wing}_{room}_{digest}"
+
+
+def _convo_drawer_id(
+    wing: str, room: str, source_file: str, chunk_index: int, extract_mode: str
+) -> str:
+    digest = hashlib.md5(
+        f"{source_file}:{extract_mode}:{chunk_index}".encode(), usedforsecurity=False
+    ).hexdigest()[:16]
+    return f"drawer_{wing}_{room}_{extract_mode}_{digest}"
 
 
 def resolve_palace_path(
@@ -55,6 +72,7 @@ class DrawerNamespace:
     wing: str
     source_file: str
     ingest_mode: str
+    extract_mode: Optional[str] = None
 
     @property
     def where(self) -> Dict[str, List[Dict[str, str]]]:
@@ -62,6 +80,8 @@ class DrawerNamespace:
 
     @property
     def refresh_owner(self) -> str:
+        if self.ingest_mode == CONVO_INGEST_MODE:
+            return f"{CONVO_INGEST_MODE}:{self.extract_mode or 'exchange'}"
         return self.ingest_mode
 
     def matches(self, row: Dict[str, object]) -> bool:
@@ -73,21 +93,17 @@ class DrawerNamespace:
 
         refresh_owner = metadata.get(REFRESH_OWNER_KEY)
         if refresh_owner is not None:
-            return (
-                refresh_owner == self.refresh_owner
-                and metadata.get("ingest_mode") == self.ingest_mode
-            )
+            if refresh_owner != self.refresh_owner:
+                return False
+            if metadata.get("ingest_mode") != self.ingest_mode:
+                return False
+            if metadata.get("extract_mode") != self.extract_mode:
+                return False
+            return True
 
         return self._matches_legacy_row(row["id"], metadata)
 
     def _matches_legacy_row(self, row_id: str, metadata: Dict[str, object]) -> bool:
-        if self.ingest_mode != PROJECT_INGEST_MODE:
-            return False
-
-        legacy_ingest_mode = metadata.get("ingest_mode")
-        if legacy_ingest_mode not in (None, PROJECT_INGEST_MODE):
-            return False
-
         room = metadata.get("room")
         chunk_index = metadata.get("chunk_index")
         if room is None or chunk_index is None:
@@ -98,13 +114,41 @@ class DrawerNamespace:
         except (TypeError, ValueError):
             return False
 
-        expected_id = _project_drawer_id(
-            wing=self.wing,
-            room=str(room),
-            source_file=self.source_file,
-            chunk_index=chunk_index,
-        )
-        return row_id == expected_id
+        legacy_ingest_mode = metadata.get("ingest_mode")
+        if self.ingest_mode == PROJECT_INGEST_MODE:
+            if legacy_ingest_mode not in (None, PROJECT_INGEST_MODE):
+                return False
+            expected_id = _project_drawer_id(
+                wing=self.wing,
+                room=str(room),
+                source_file=self.source_file,
+                chunk_index=chunk_index,
+            )
+            return row_id == expected_id
+
+        if self.ingest_mode == CONVO_INGEST_MODE:
+            if legacy_ingest_mode != CONVO_INGEST_MODE:
+                return False
+            if metadata.get("extract_mode") != self.extract_mode:
+                return False
+            expected_ids = {
+                _convo_drawer_id(
+                    wing=self.wing,
+                    room=str(room),
+                    source_file=self.source_file,
+                    chunk_index=chunk_index,
+                    extract_mode=self.extract_mode or "exchange",
+                ),
+                _legacy_convo_drawer_id(
+                    wing=self.wing,
+                    room=str(room),
+                    source_file=self.source_file,
+                    chunk_index=chunk_index,
+                ),
+            }
+            return row_id in expected_ids
+
+        return False
 
 
 class DrawerStore:
